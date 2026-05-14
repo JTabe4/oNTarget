@@ -1,0 +1,241 @@
+# oNTarget Vision
+
+## Overview
+
+oNTarget is a mobile-first goal accountability and progress tracking platform designed to help individuals and groups stay committed to meaningful goals through visible progress, motivation, and accountability.
+
+The app allows users to:
+- create personal goals
+- track progress visually
+- upload updates and photos
+- join accountability groups
+- receive encouragement and feedback
+- stay motivated through progress visibility
+
+Unlike traditional to-do apps, oNTarget focuses on long-term goals, measurable improvement, and accountability rather than simple task completion.
+
+---
+
+# Core Problem
+
+Many people set goals but struggle with:
+- consistency
+- motivation
+- accountability
+- tracking meaningful progress
+
+Most productivity apps are task-focused rather than progress-focused.
+
+oNTarget aims to solve this by creating a system where users can:
+- visibly track improvement
+- share progress with trusted groups
+- receive accountability from coaches or peers
+- stay motivated through progress visualization
+
+---
+
+# Target Users
+
+## Primary Users
+- individuals with personal goals
+- fitness groups
+- sports teams
+- friend accountability groups
+- students
+- professionals
+
+## Potential Coach/Leader Users
+- fitness coaches
+- team managers
+- mentors
+- accountability leaders
+
+---
+
+# Core Product Philosophy
+
+oNTarget is not meant to be:
+- a generic to-do list
+- a complicated social media platform
+- a task management app
+
+oNTarget is meant to be:
+- goal-centric
+- motivational
+- accountability-driven
+- progress-focused
+- visually engaging
+- simple to use consistently
+
+---
+
+# Core MVP Features
+
+## Authentication
+Users can:
+- create accounts
+- log in securely
+- stay signed in
+
+---
+
+## Personal Goals
+Users can:
+- create goals
+- categorize goals
+- edit/delete goals
+- set progress percentages
+- set due dates
+- mark goals as private or shared
+
+Examples:
+- save money
+- lose weight
+- study consistently
+- improve habits
+- prepare for an event
+
+---
+
+## Goal Progress Tracking
+Users can:
+- update progress %
+- upload progress photos
+- add notes/captions
+- view goal history
+
+---
+
+## Groups
+Users can:
+- create groups
+- join groups
+- share goals within groups
+
+Groups create accountability and motivation.
+
+---
+
+## Coach/Manager Features
+Coaches or group leaders can:
+- monitor member progress
+- create group goals
+- comment on updates
+- encourage accountability
+
+---
+
+## Progress Visibility
+Users should immediately see:
+- current goals
+- progress bars
+- recent updates
+- team progress
+- motivational feedback
+
+The experience should encourage users to:
+- keep improving
+- stay consistent
+- remain accountable
+
+---
+
+# Initial Progress System
+
+Version 1 will primarily use:
+- percentage-based progress (0–100%)
+
+This keeps the system flexible across many goal types.
+
+Examples:
+- “Save $1000” → 40%
+- “Lose 20 lbs” → 60%
+- “Read 10 books” → 30%
+
+More advanced goal logic may be added later.
+
+---
+
+# Privacy Model
+
+## Personal Goals
+Private by default.
+
+Only the owner can see them unless shared.
+
+---
+
+## Group Goals
+Can be:
+- public to group
+- private to owner
+
+---
+
+## Coaches
+Can monitor assigned/team goals and comment on progress.
+
+Coaches should not secretly modify user updates.
+
+Trust and transparency are important.
+
+---
+
+# Motivation System (Future)
+
+Future versions may include:
+- daily motivational messages
+- streak systems
+- progress insights
+- reminders
+- encouragement indicators
+- positive reinforcement visuals
+
+The goal is to create emotional engagement without becoming overwhelming.
+
+---
+
+# Technical Vision
+
+## Frontend
+React Native + Expo
+
+## Backend
+Firebase
+
+### Firebase Services
+- Firebase Authentication
+- Firestore Database
+- Firebase Storage
+
+---
+
+# Product Goals
+
+The long-term goal is to build:
+- a scalable mobile platform
+- a visually motivating experience
+- a trusted accountability system
+- a flexible goal ecosystem for individuals and groups
+
+oNTarget should feel:
+- supportive
+- encouraging
+- modern
+- simple
+- progress-oriented
+
+---
+
+# MVP Priority
+
+The first milestone is NOT building every feature.
+
+The first milestone is building:
+- authentication
+- navigation
+- goals
+- progress tracking
+- group accountability foundation
+
+Everything else expands from that foundation.
