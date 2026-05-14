@@ -1,0 +1,72 @@
+// ------------------------------------------------------------------
+// firestore.rules
+// ------------------------------------------------------------------
+// Deploy with:  firebase deploy --only firestore:rules
+//
+// This file covers the collections we use today:
+//   users/{uid}
+//   usernames/{lowercaseUsername}
+//   goals/{goalId}
+//
+// Rule of thumb: rules don't *filter* — they *validate* every read
+// or write.  Queries succeed only if every possible result would
+// satisfy the rule.  We design queries (e.g., where('ownerId', '==',
+// myUid)) to match the rules below.
+// ------------------------------------------------------------------
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --------------------------------------------------------------
+    // User profile docs
+    // --------------------------------------------------------------
+    match /users/{uid} {
+      allow read:  if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // --------------------------------------------------------------
+    // Username uniqueness index — see context/AuthContext.tsx
+    // Each doc looks like { uid: "abc123" } and its ID is the
+    // lowercase username it claims.
+    // --------------------------------------------------------------
+    match /usernames/{name} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+                    && request.resource.data.uid == request.auth.uid;
+      // Username re-assignment requires a Cloud Function so it can
+      // also rewrite /users/{uid}; block client edits for now.
+      allow update, delete: if false;
+    }
+
+    // --------------------------------------------------------------
+    // Goals — only the owner can read or write their goals, and the
+    // owner can never be changed.
+    // --------------------------------------------------------------
+    match /goals/{goalId} {
+      // Read access: must be signed in AND the goal must belong to you.
+      // Combined with the client query `where('ownerId', '==', myUid)`,
+      // this allows list operations.
+      allow read: if request.auth != null
+                  && resource.data.ownerId == request.auth.uid;
+
+      // Create: the new doc must mark *you* as the owner.
+      allow create: if request.auth != null
+                    && request.resource.data.ownerId == request.auth.uid;
+
+      // Update: you must already be the owner AND ownerId must not
+      // change.  This prevents another user from "stealing" a goal,
+      // and prevents accidental ownership changes from the client.
+      allow update: if request.auth != null
+                    && resource.data.ownerId == request.auth.uid
+                    && request.resource.data.ownerId == resource.data.ownerId;
+
+      // Delete: only the owner.  (The MVP archives instead, but this
+      // rule keeps the door open for account-deletion flows.)
+      allow delete: if request.auth != null
+                    && resource.data.ownerId == request.auth.uid;
+    }
+  }
+}
