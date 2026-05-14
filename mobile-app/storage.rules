@@ -1,0 +1,41 @@
+// ------------------------------------------------------------------
+// storage.rules — Firebase Cloud Storage rules
+// ------------------------------------------------------------------
+// Deploy with:  firebase deploy --only storage
+//
+// Path layout we use:
+//   goalUpdates/{userId}/{goalId}/{filename}
+//
+// Putting userId in the path lets us check ownership in the rule
+// without a Firestore read.  Putting goalId in the path makes
+// later batch operations (e.g. delete-all-images-for-goal) easy.
+// ------------------------------------------------------------------
+
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Default deny — anything we don't explicitly allow is blocked.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+
+    // Goal-update images.
+    match /goalUpdates/{userId}/{goalId}/{filename} {
+
+      // Read: any signed-in user.  (We rely on the Firestore rule
+      // to keep imageUrls out of unauthorized users' hands.  If
+      // someone guesses a URL, that's acceptable for MVP — these
+      // are user-shared photos, not private medical records.)
+      allow read: if request.auth != null;
+
+      // Write: only the matching user can upload to their own
+      // path.  Enforce a 10 MB cap and an image content-type.
+      allow write: if request.auth != null
+                   && request.auth.uid == userId
+                   && request.resource.size < 10 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+    }
+  }
+}

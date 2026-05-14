@@ -68,5 +68,39 @@ service cloud.firestore {
       allow delete: if request.auth != null
                     && resource.data.ownerId == request.auth.uid;
     }
+
+    // --------------------------------------------------------------
+    // Goal updates — text/image posts attached to a goal.
+    //
+    // MVP rule of thumb: only the goal's owner can read or post
+    // updates for it.  Later, when group/coach visibility lands, the
+    // read rule will branch on goal.visibility and group membership.
+    // --------------------------------------------------------------
+    match /goalUpdates/{updateId} {
+
+      // Look up the related goal once per evaluation to check
+      // ownership.  `get()` counts as one read against the request.
+      function goalOwnerId(goalId) {
+        return get(/databases/$(database)/documents/goals/$(goalId)).data.ownerId;
+      }
+
+      // Read: signed-in users may read an update if they own the
+      // related goal.  (Same constraint as the goal itself for MVP.)
+      allow read: if request.auth != null
+                  && goalOwnerId(resource.data.goalId) == request.auth.uid;
+
+      // Create: the doc's userId must be the signed-in user, AND
+      // they must own the goal they're posting to.  The text field
+      // must be non-empty.  imageUrl may be null or a string.
+      allow create: if request.auth != null
+                    && request.resource.data.userId == request.auth.uid
+                    && goalOwnerId(request.resource.data.goalId) == request.auth.uid
+                    && request.resource.data.text is string
+                    && request.resource.data.text.size() > 0;
+
+      // Updates are immutable in MVP.  Edits/deletes will need a
+      // separate flow (and rules) — block them for now.
+      allow update, delete: if false;
+    }
   }
 }

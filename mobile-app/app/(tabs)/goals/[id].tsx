@@ -33,8 +33,11 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
+import { GoalUpdateCard } from '@/components/goal-update-card';
+import { GoalUpdateComposer } from '@/components/goal-update-composer';
 import { ProgressBar } from '@/components/progress-bar';
 import { archiveGoal, getGoal, updateGoal, updateGoalProgress } from '@/firebase/goals';
+import { useGoalUpdates } from '@/hooks/use-goal-updates';
 import {
   type Goal,
   type GoalEditableFields,
@@ -65,6 +68,9 @@ export default function GoalDetailsScreen() {
   // Mode + form state
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  // Updates feed (separate subscription — see hooks/use-goal-updates).
+  const { updates, loading: updatesLoading, error: updatesError } = useGoalUpdates(id);
 
   // Quick-update widget (view mode)
   const [progressInput, setProgressInput] = useState('');
@@ -365,6 +371,24 @@ export default function GoalDetailsScreen() {
             </Pressable>
           </View>
 
+          {/* Updates section — composer above the feed. */}
+          <Text style={[styles.sectionTitle, styles.updatesHeader]}>Updates</Text>
+          <GoalUpdateComposer goalId={goal.id} />
+
+          {updatesLoading ? (
+            <ActivityIndicator style={styles.updatesLoader} />
+          ) : updatesError ? (
+            <Text style={styles.errorText}>Could not load updates: {updatesError.message}</Text>
+          ) : updates.length === 0 ? (
+            <Text style={styles.emptyUpdates}>No updates yet. Be the first to post.</Text>
+          ) : (
+            <View>
+              {updates.map((u) => (
+                <GoalUpdateCard key={u.id} update={u} />
+              ))}
+            </View>
+          )}
+
           <View style={[styles.actionsRow, styles.actionsRowSpaced]}>
             <Pressable
               style={[styles.button, styles.secondaryButton]}
@@ -444,6 +468,9 @@ const styles = StyleSheet.create({
   detailValue: { color: '#111', fontSize: 13, fontWeight: '500' },
 
   sectionTitle: { fontSize: 14, fontWeight: '600', marginTop: 8, marginBottom: 8, color: '#444' },
+  updatesHeader: { marginTop: 24 },
+  updatesLoader: { marginVertical: 16 },
+  emptyUpdates: { color: '#666', fontSize: 13, paddingVertical: 12, textAlign: 'center' },
 
   row: { flexDirection: 'row', alignItems: 'center' },
   flex1: { flex: 1 },
