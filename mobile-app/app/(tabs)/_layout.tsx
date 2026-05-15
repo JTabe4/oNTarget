@@ -43,9 +43,11 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="groups"
+        name="teams"
         options={{
-          title: 'Groups',
+          title: 'Teams',
+          // MaterialIcons icon name "groups" is just a generic people
+          // glyph — user-facing label is still "Teams".
           tabBarIcon: ({ color }) => <MaterialIcons size={26} name="groups" color={color} />,
         }}
       />

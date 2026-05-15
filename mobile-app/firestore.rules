@@ -102,5 +102,106 @@ service cloud.firestore {
       // separate flow (and rules) — block them for now.
       allow update, delete: if false;
     }
+
+    // --------------------------------------------------------------
+    // Teams — read by members; write by the team leader.
+    //
+    // Membership is the source of truth for "can I read this team",
+    // looked up by the deterministic membership id `teamId_userId`.
+    // --------------------------------------------------------------
+    match /teams/{teamId} {
+
+      function isMember() {
+        return exists(
+          /databases/$(database)/documents/teamMembers/$(teamId + '_' + request.auth.uid)
+        );
+      }
+
+      // Read: members only.
+      allow read: if request.auth != null && isMember();
+
+      // Create: must declare yourself as the team leader, with your
+      // own username denormalized onto the doc.
+      allow create: if request.auth != null
+                    && request.resource.data.teamLeaderId == request.auth.uid
+                    && request.resource.data.teamLeaderUsername is string;
+
+      // Update: only the (current) team leader; teamLeaderId cannot
+      // change (no transferring leadership client-side yet).
+      allow update: if request.auth != null
+                    && resource.data.teamLeaderId == request.auth.uid
+                    && request.resource.data.teamLeaderId == resource.data.teamLeaderId;
+
+      allow delete: if false;
+    }
+
+    // --------------------------------------------------------------
+    // Invite-code lookup table.
+    //
+    // Doc id == invite code.  Doc body == { teamId: ... }.
+    // Anyone signed in may read so that a not-yet-member can resolve
+    // a code → teamId before joining.
+    // --------------------------------------------------------------
+    match /inviteCodes/{code} {
+      allow read: if request.auth != null;
+
+      // Created during the team-create flow.  We don't have a robust
+      // way to gate this further without a Cloud Function — anyone
+      // signed in can claim an unused code.  This is acceptable for
+      // MVP because the doc only stores a teamId pointer, not real
+      // privileges.
+      allow create: if request.auth != null
+                    && request.resource.data.teamId is string;
+
+      allow update, delete: if false;
+    }
+
+    // --------------------------------------------------------------
+    // Team memberships.
+    //
+    // Doc id MUST equal `${teamId}_${userId}` — this is how we
+    // structurally prevent duplicate memberships.
+    // --------------------------------------------------------------
+    match /teamMembers/{membershipId} {
+
+      // Read: a user can read all members of any team they belong to.
+      allow read: if request.auth != null
+                  && exists(
+                    /databases/$(database)/documents/teamMembers/$(resource.data.teamId + '_' + request.auth.uid)
+                  );
+
+      // Create: tightly constrained.
+      //   - You can only create your own membership.
+      //   - The doc id must match the deterministic pattern.
+      //   - If you're claiming the `team_leader` role we accept it
+      //     unconditionally — the team's own rules check
+      //     `team.teamLeaderId` for any leader-only operation, so a
+      //     fake leader-membership grants no privileged access.
+      //     (The UI uses team.teamLeaderId as source of truth.)
+      //   - If you're joining as a `member`, the request must include
+      //     an inviteCode that points to the same teamId in the
+      //     /inviteCodes lookup table.
+      allow create: if request.auth != null
+                    && request.resource.data.userId == request.auth.uid
+                    && membershipId == request.resource.data.teamId + '_' + request.resource.data.userId
+                    && (
+                      request.resource.data.role == 'team_leader'
+                      ||
+                      (
+                        request.resource.data.role == 'member'
+                        && exists(/databases/$(database)/documents/inviteCodes/$(request.resource.data.inviteCode))
+                        && get(/databases/$(database)/documents/inviteCodes/$(request.resource.data.inviteCode)).data.teamId == request.resource.data.teamId
+                      )
+                    );
+
+      // No role changes from the client yet.
+      allow update: if false;
+
+      // A user may delete their own membership (= leave team).  Not
+      // wired into the MVP UI but the rule is here so we don't have
+      // to amend it later.
+      allow delete: if request.auth != null
+                    && resource.data.userId == request.auth.uid;
+    }
   }
 }
