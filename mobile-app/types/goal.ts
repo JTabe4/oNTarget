@@ -12,13 +12,13 @@
 import type { Timestamp } from 'firebase/firestore';
 
 /** Who can see this goal. */
-export type GoalVisibility = 'private' | 'group' | 'coach_only' | 'public';
+export type GoalVisibility = 'private' | 'team' | 'coach_only' | 'public';
 
 /** Lifecycle state.  `archived` is our soft-delete. */
 export type GoalStatus = 'active' | 'completed' | 'archived';
 
-/** Why this goal exists.  All MVP goals are 'personal'. */
-export type GoalOwnerType = 'personal' | 'group' | 'coach_assigned';
+/** Why this goal exists. */
+export type GoalOwnerType = 'personal' | 'team' | 'coach_assigned';
 
 /**
  * Goal as it exists in Firestore (`goals/{goalId}`).
@@ -53,7 +53,7 @@ export interface Goal {
   ownerType: GoalOwnerType;
   ownerId: string;
   ownerUsername: string;
-  groupId: string | null;
+  teamId: string | null;
   assignedBy: string | null;
 
   createdAt: Timestamp | null;
@@ -64,6 +64,10 @@ export interface Goal {
  * What the user fills in when creating a goal — derived fields
  * (progressPercent, status, owner*, timestamps) are filled in by the
  * repository layer, not by the form.
+ *
+ * `ownerType` and `teamId` carry the personal-vs-team distinction.
+ * For team goals the repository forces `visibility: 'team'` regardless
+ * of what the form sent.
  */
 export interface NewGoalInput {
   title: string;
@@ -74,6 +78,9 @@ export interface NewGoalInput {
   unit: string;
   deadline: Date | null;
   visibility: GoalVisibility;
+
+  ownerType: 'personal' | 'team';
+  teamId: string | null;
 }
 
 /**

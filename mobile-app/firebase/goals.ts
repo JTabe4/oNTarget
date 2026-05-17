@@ -45,9 +45,22 @@ import {
 const goalsCol = () => collection(db, 'goals');
 const goalDoc = (id: string) => doc(db, 'goals', id);
 
-/** Map a Firestore document → Goal (adds `id` from the doc key). */
+/**
+ * Map a Firestore document → Goal.  Two compatibility shims:
+ *   - Legacy docs used `groupId` instead of `teamId`; we read either.
+ *   - Legacy docs may have visibility 'group'; we map it to 'team'.
+ * Both mean we don't need a migration script to keep old data alive.
+ */
 function docToGoal(snap: QueryDocumentSnapshot<DocumentData>): Goal {
-  return { id: snap.id, ...(snap.data() as Omit<Goal, 'id'>) };
+  const data = snap.data() as Record<string, any>;
+  const teamId = data.teamId ?? data.groupId ?? null;
+  const visibility = data.visibility === 'group' ? 'team' : data.visibility;
+  return {
+    ...(data as Omit<Goal, 'id'>),
+    id: snap.id,
+    teamId,
+    visibility,
+  };
 }
 
 /** Convert a JS Date (or null) into a Firestore Timestamp for storage. */
@@ -60,10 +73,14 @@ function toTimestamp(d: Date | null): Timestamp | null {
 // ------------------------------------------------------------------
 
 /**
- * Create a new (personal) goal owned by the given user.
+ * Create a goal owned by the given user.  May be personal (no team)
+ * or attached to one of the user's teams.
  *
- * The form supplies user-visible fields; we compute progressPercent,
- * stamp `status: 'active'`, fill in owner/timestamps, and write.
+ * Sanity rules applied here so screens can't write bad combinations:
+ *   - ownerType === 'team' MUST come with a non-null teamId.
+ *   - For team goals we force visibility = 'team' regardless of what
+ *     the form sent.
+ *   - For personal goals we force teamId = null (defensive).
  */
 export async function createGoal(
   input: NewGoalInput,
@@ -71,6 +88,11 @@ export async function createGoal(
   ownerUsername: string
 ): Promise<string> {
   const progressPercent = computeProgressPercent(input.currentValue, input.targetValue);
+
+  const isTeamGoal = input.ownerType === 'team';
+  if (isTeamGoal && !input.teamId) {
+    throw new Error('Team goals require a team.');
+  }
 
   const ref = await addDoc(goalsCol(), {
     title: input.title.trim(),
@@ -84,13 +106,13 @@ export async function createGoal(
 
     deadline: toTimestamp(input.deadline),
 
-    visibility: input.visibility,
+    visibility: isTeamGoal ? 'team' : input.visibility,
     status: 'active',
 
-    ownerType: 'personal',
+    ownerType: input.ownerType,
     ownerId,
     ownerUsername,
-    groupId: null,
+    teamId: isTeamGoal ? input.teamId : null,
     assignedBy: null,
 
     createdAt: serverTimestamp(),
@@ -112,18 +134,13 @@ export async function getGoal(goalId: string): Promise<Goal | null> {
 }
 
 /**
- * Real-time subscription to a user's goals.
+ * Real-time subscription to goals OWNED by a user — i.e., the
+ * personal goals plus any team goals that user created.
  *
- * Server-side filters keep someone else's goals from ever reaching
- * the device (and the security rules enforce the same on the wire).
- * We sort newest-first.
- *
- * Note: archived goals are still returned here — the list screen
- * filters them out client-side.  Surfacing them at this layer keeps
- * the hook flexible for future "Archive" tab views without a
- * second listener.
+ * Sort: newest first.  Archived goals are still returned here so
+ * the list screen can choose how to filter them.
  */
-export function watchUserGoals(
+export function watchOwnedGoals(
   ownerId: string,
   onChange: (goals: Goal[]) => void,
   onError?: (err: Error) => void
@@ -136,13 +153,40 @@ export function watchUserGoals(
 
   return onSnapshot(
     q,
-    (snap) => {
-      const goals = snap.docs.map(docToGoal);
-      onChange(goals);
-    },
-    (err) => {
-      if (onError) onError(err);
-    }
+    (snap) => onChange(snap.docs.map(docToGoal)),
+    (err) => onError?.(err)
+  );
+}
+
+/**
+ * Real-time subscription to all goals belonging to ANY of the given
+ * team ids.  Used so members see their teams' goals in the goals
+ * list — not just their personal ones.
+ *
+ * Firestore's `where('teamId', 'in', […])` accepts up to 30 values.
+ * We cap at 30 here; if a user belongs to more we'll lose visibility
+ * into the tail teams (acceptable at MVP scale).
+ */
+export function watchTeamGoals(
+  teamIds: string[],
+  onChange: (goals: Goal[]) => void,
+  onError?: (err: Error) => void
+): Unsubscribe {
+  if (teamIds.length === 0) {
+    onChange([]);
+    return () => {};
+  }
+  const capped = teamIds.slice(0, 30);
+  const q = query(
+    goalsCol(),
+    where('teamId', 'in', capped),
+    orderBy('createdAt', 'desc')
+  );
+
+  return onSnapshot(
+    q,
+    (snap) => onChange(snap.docs.map(docToGoal)),
+    (err) => onError?.(err)
   );
 }
 

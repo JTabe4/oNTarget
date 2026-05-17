@@ -42,29 +42,67 @@ service cloud.firestore {
     }
 
     // --------------------------------------------------------------
-    // Goals — only the owner can read or write their goals, and the
-    // owner can never be changed.
+    // Goals — personal (private to owner) or team (visible to all
+    // members of the goal's team).
+    //
+    //   ownerType: 'personal' | 'team' | 'coach_assigned'
+    //   teamId:    string | null
+    //
+    // Source of truth for "can I see this goal":
+    //   - I own it (ownerId == auth.uid), OR
+    //   - It's a team goal whose teamId I'm a member of.
+    //
+    // Mutations (edit / archive / delete) stay restricted to the
+    // creator for MVP — even for team goals.
     // --------------------------------------------------------------
     match /goals/{goalId} {
-      // Read access: must be signed in AND the goal must belong to you.
-      // Combined with the client query `where('ownerId', '==', myUid)`,
-      // this allows list operations.
+
+      function isMemberOfTeam(teamId) {
+        return exists(
+          /databases/$(database)/documents/teamMembers/$(teamId + '_' + request.auth.uid)
+        );
+      }
+
+      // Read: I own it OR I'm in the team it belongs to.
+      // The client list-query branches into two queries
+      // (where ownerId == me, and where teamId in [my teams])
+      // and every result of either is independently allowed below.
       allow read: if request.auth != null
-                  && resource.data.ownerId == request.auth.uid;
+                  && (
+                    resource.data.ownerId == request.auth.uid
+                    ||
+                    (resource.data.teamId is string && isMemberOfTeam(resource.data.teamId))
+                  );
 
-      // Create: the new doc must mark *you* as the owner.
+      // Create: must mark *yourself* as owner, AND:
+      //   - personal goal → teamId must be null
+      //   - team goal     → teamId must be a team you belong to
+      //   - coach_assigned goals can't be self-created here yet
       allow create: if request.auth != null
-                    && request.resource.data.ownerId == request.auth.uid;
+                    && request.resource.data.ownerId == request.auth.uid
+                    && (
+                      (
+                        request.resource.data.ownerType == 'personal'
+                        && request.resource.data.teamId == null
+                      )
+                      ||
+                      (
+                        request.resource.data.ownerType == 'team'
+                        && request.resource.data.teamId is string
+                        && isMemberOfTeam(request.resource.data.teamId)
+                      )
+                    );
 
-      // Update: you must already be the owner AND ownerId must not
-      // change.  This prevents another user from "stealing" a goal,
-      // and prevents accidental ownership changes from the client.
+      // Update: only the creator.  ownerId and teamId are immutable
+      // (no transferring goals between owners or moving them between
+      // teams from the client).
       allow update: if request.auth != null
                     && resource.data.ownerId == request.auth.uid
-                    && request.resource.data.ownerId == resource.data.ownerId;
+                    && request.resource.data.ownerId == resource.data.ownerId
+                    && request.resource.data.teamId == resource.data.teamId;
 
-      // Delete: only the owner.  (The MVP archives instead, but this
-      // rule keeps the door open for account-deletion flows.)
+      // Delete: only the creator.  The MVP archives via update; this
+      // door is open for account-deletion / cleanup flows.
       allow delete: if request.auth != null
                     && resource.data.ownerId == request.auth.uid;
     }
@@ -72,29 +110,37 @@ service cloud.firestore {
     // --------------------------------------------------------------
     // Goal updates — text/image posts attached to a goal.
     //
-    // MVP rule of thumb: only the goal's owner can read or post
-    // updates for it.  Later, when group/coach visibility lands, the
-    // read rule will branch on goal.visibility and group membership.
+    // Read parity with the parent goal: if you can see the goal,
+    // you can see its updates.  Posting an update is still owner-
+    // only for MVP (we haven't shipped team-side posting yet).
     // --------------------------------------------------------------
     match /goalUpdates/{updateId} {
 
-      // Look up the related goal once per evaluation to check
-      // ownership.  `get()` counts as one read against the request.
-      function goalOwnerId(goalId) {
-        return get(/databases/$(database)/documents/goals/$(goalId)).data.ownerId;
+      // Read parent-goal data once.  Used by both read and create
+      // rules below — get() counts as one read per rule evaluation.
+      function goalData(goalId) {
+        return get(/databases/$(database)/documents/goals/$(goalId)).data;
+      }
+      function canSeeGoal(goalId) {
+        let g = goalData(goalId);
+        return g.ownerId == request.auth.uid
+               || (
+                 g.teamId is string
+                 && exists(
+                   /databases/$(database)/documents/teamMembers/$(g.teamId + '_' + request.auth.uid)
+                 )
+               );
       }
 
-      // Read: signed-in users may read an update if they own the
-      // related goal.  (Same constraint as the goal itself for MVP.)
+      // Read: anyone who can see the underlying goal.
       allow read: if request.auth != null
-                  && goalOwnerId(resource.data.goalId) == request.auth.uid;
+                  && canSeeGoal(resource.data.goalId);
 
-      // Create: the doc's userId must be the signed-in user, AND
-      // they must own the goal they're posting to.  The text field
-      // must be non-empty.  imageUrl may be null or a string.
+      // Create: still restricted to the goal owner for MVP.  Adding
+      // team-member posting would just relax this branch.
       allow create: if request.auth != null
                     && request.resource.data.userId == request.auth.uid
-                    && goalOwnerId(request.resource.data.goalId) == request.auth.uid
+                    && goalData(request.resource.data.goalId).ownerId == request.auth.uid
                     && request.resource.data.text is string
                     && request.resource.data.text.size() > 0;
 

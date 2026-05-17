@@ -49,7 +49,12 @@ export function GoalCard({ goal, onPress }: Props) {
         <Text style={[styles.status, { color: status.color }]}>{status.text}</Text>
       </View>
 
-      {goal.category ? <Text style={styles.category}>{goal.category}</Text> : null}
+      <View style={styles.subRow}>
+        {goal.category ? <Text style={styles.category}>{goal.category}</Text> : null}
+        {goal.ownerType === 'team' && goal.teamId ? (
+          <Text style={styles.teamBadge}>TEAM</Text>
+        ) : null}
+      </View>
 
       <View style={styles.progressRow}>
         <ProgressBar percent={goal.progressPercent} />
@@ -80,7 +85,18 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 17, fontWeight: '600', flex: 1, marginRight: 8, color: '#111' },
   status: { fontSize: 12, fontWeight: '600' },
-  category: { fontSize: 13, color: '#666', marginTop: 2 },
+  subRow: { flexDirection: 'row', alignItems: 'center', marginTop: 2, gap: 8 },
+  category: { fontSize: 13, color: '#666' },
+  teamBadge: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#0a7ea4',
+    backgroundColor: '#e6f3f8',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    letterSpacing: 0.5,
+  },
   progressRow: { marginTop: 12 },
   metaRow: {
     flexDirection: 'row',

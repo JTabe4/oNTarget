@@ -37,6 +37,7 @@ import { GoalUpdateCard } from '@/components/goal-update-card';
 import { GoalUpdateComposer } from '@/components/goal-update-composer';
 import { ProgressBar } from '@/components/progress-bar';
 import { archiveGoal, getGoal, updateGoal, updateGoalProgress } from '@/firebase/goals';
+import { getTeam } from '@/firebase/teams';
 import { useGoalUpdates } from '@/hooks/use-goal-updates';
 import {
   type Goal,
@@ -71,6 +72,10 @@ export default function GoalDetailsScreen() {
 
   // Updates feed (separate subscription — see hooks/use-goal-updates).
   const { updates, loading: updatesLoading, error: updatesError } = useGoalUpdates(id);
+
+  // Team name (only fetched if this is a team goal).  Cached locally
+  // so we don't refetch on every render of the details screen.
+  const [teamName, setTeamName] = useState<string | null>(null);
 
   // Quick-update widget (view mode)
   const [progressInput, setProgressInput] = useState('');
@@ -113,6 +118,26 @@ export default function GoalDetailsScreen() {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  // Whenever the goal lands, fetch the team name if it's a team goal.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!goal?.teamId) {
+        setTeamName(null);
+        return;
+      }
+      try {
+        const t = await getTeam(goal.teamId);
+        if (!cancelled) setTeamName(t?.name ?? null);
+      } catch {
+        if (!cancelled) setTeamName(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [goal?.teamId]);
 
   if (loading) {
     return (
@@ -341,6 +366,14 @@ export default function GoalDetailsScreen() {
           ) : null}
 
           <View style={styles.detailGrid}>
+            <DetailRow
+              label="Goal type"
+              value={
+                goal.ownerType === 'team'
+                  ? `Team — ${teamName ?? 'loading…'}`
+                  : 'Personal'
+              }
+            />
             <DetailRow label="Status" value={goal.status} />
             <DetailRow label="Visibility" value={goal.visibility} />
             <DetailRow label="Deadline" value={formatDate(goal.deadline?.toDate() ?? null)} />

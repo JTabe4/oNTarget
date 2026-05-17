@@ -25,18 +25,22 @@ import { useRouter } from 'expo-router';
 
 import { useAuth } from '@/context/AuthContext';
 import { createGoal } from '@/firebase/goals';
+import { useUserTeams } from '@/hooks/use-user-teams';
 import {
   type GoalVisibility,
   type NewGoalInput,
   computeProgressPercent,
 } from '@/types/goal';
 
-const VISIBILITIES: { value: GoalVisibility; label: string }[] = [
+// Personal-goal visibilities only.  Team-goal visibility is forced
+// to 'team' by the repository, so no point asking the user.
+const PERSONAL_VISIBILITIES: { value: GoalVisibility; label: string }[] = [
   { value: 'private', label: 'Private' },
-  { value: 'group', label: 'Group' },
   { value: 'coach_only', label: 'Coach only' },
   { value: 'public', label: 'Public' },
 ];
+
+type GoalKind = 'personal' | 'team';
 
 /** Accepts YYYY-MM-DD or empty.  Returns Date | null | 'invalid'. */
 function parseDateInput(raw: string): Date | null | 'invalid' {
@@ -50,6 +54,10 @@ function parseDateInput(raw: string): Date | null | 'invalid' {
 export default function NewGoalScreen() {
   const router = useRouter();
   const { user, userProfile } = useAuth();
+  const { teams: userTeams } = useUserTeams();
+
+  const [kind, setKind] = useState<GoalKind>('personal');
+  const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -96,6 +104,11 @@ export default function NewGoalScreen() {
       return;
     }
 
+    if (kind === 'team' && !selectedTeamId) {
+      setError('Choose a team for this goal.');
+      return;
+    }
+
     const input: NewGoalInput = {
       title,
       description,
@@ -104,7 +117,10 @@ export default function NewGoalScreen() {
       currentValue: current,
       unit,
       deadline: parsedDeadline,
-      visibility,
+      // For team goals the repository overrides this to 'team' anyway.
+      visibility: kind === 'team' ? 'team' : visibility,
+      ownerType: kind,
+      teamId: kind === 'team' ? selectedTeamId : null,
     };
 
     try {
@@ -124,6 +140,65 @@ export default function NewGoalScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+        <Field label="Goal type">
+          <View style={styles.pillRow}>
+            <Pressable
+              onPress={() => setKind('personal')}
+              style={[styles.pill, kind === 'personal' && styles.pillActive]}
+            >
+              <Text style={[styles.pillText, kind === 'personal' && styles.pillTextActive]}>
+                Personal Goal
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setKind('team')}
+              style={[styles.pill, kind === 'team' && styles.pillActive]}
+            >
+              <Text style={[styles.pillText, kind === 'team' && styles.pillTextActive]}>
+                Team Goal
+              </Text>
+            </Pressable>
+          </View>
+        </Field>
+
+        {kind === 'team' && (
+          <Field label="Team">
+            {userTeams.length === 0 ? (
+              <Text style={styles.helperMuted}>
+                You&apos;re not on any teams yet. Join or create a team on the Teams tab first.
+              </Text>
+            ) : (
+              <View style={styles.teamList}>
+                {userTeams.map(({ team }) => {
+                  const selected = team.id === selectedTeamId;
+                  return (
+                    <Pressable
+                      key={team.id}
+                      onPress={() => setSelectedTeamId(team.id)}
+                      style={[styles.teamOption, selected && styles.teamOptionActive]}
+                    >
+                      <Text style={[styles.teamOptionName, selected && styles.teamOptionNameActive]}>
+                        {team.name}
+                      </Text>
+                      {team.description ? (
+                        <Text
+                          style={[
+                            styles.teamOptionDesc,
+                            selected && styles.teamOptionDescActive,
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {team.description}
+                        </Text>
+                      ) : null}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
+          </Field>
+        )}
+
         <Field label="Title">
           <TextInput
             style={styles.input}
@@ -201,26 +276,33 @@ export default function NewGoalScreen() {
           />
         </Field>
 
-        <Field label="Visibility">
-          <View style={styles.pillRow}>
-            {VISIBILITIES.map((v) => (
-              <Pressable
-                key={v.value}
-                onPress={() => setVisibility(v.value)}
-                style={[styles.pill, visibility === v.value && styles.pillActive]}
-              >
-                <Text
-                  style={[
-                    styles.pillText,
-                    visibility === v.value && styles.pillTextActive,
-                  ]}
+        {kind === 'personal' ? (
+          <Field label="Visibility">
+            <View style={styles.pillRow}>
+              {PERSONAL_VISIBILITIES.map((v) => (
+                <Pressable
+                  key={v.value}
+                  onPress={() => setVisibility(v.value)}
+                  style={[styles.pill, visibility === v.value && styles.pillActive]}
                 >
-                  {v.label}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        </Field>
+                  <Text
+                    style={[
+                      styles.pillText,
+                      visibility === v.value && styles.pillTextActive,
+                    ]}
+                  >
+                    {v.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </Field>
+        ) : (
+          <Text style={styles.helperMuted}>
+            Visibility is set to <Text style={styles.helperEmphasis}>Team</Text> — every member
+            of the selected team will see this goal.
+          </Text>
+        )}
 
         {error && <Text style={styles.error}>{error}</Text>}
 
@@ -290,6 +372,23 @@ const styles = StyleSheet.create({
   pillActive: { backgroundColor: '#0a7ea4', borderColor: '#0a7ea4' },
   pillText: { color: '#333', fontSize: 13 },
   pillTextActive: { color: '#fff', fontWeight: '600' },
+
+  helperMuted: { color: '#666', fontSize: 13, lineHeight: 19, marginBottom: 14 },
+  helperEmphasis: { color: '#0a7ea4', fontWeight: '600' },
+
+  teamList: { gap: 8 },
+  teamOption: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 10,
+    padding: 12,
+    backgroundColor: '#fff',
+  },
+  teamOptionActive: { borderColor: '#0a7ea4', backgroundColor: '#f0f8fb' },
+  teamOptionName: { fontSize: 15, fontWeight: '600', color: '#111' },
+  teamOptionNameActive: { color: '#0a7ea4' },
+  teamOptionDesc: { fontSize: 12, color: '#666', marginTop: 2 },
+  teamOptionDescActive: { color: '#0a7ea4' },
 
   error: { color: '#d4351c', marginVertical: 8 },
   button: {
